@@ -8,6 +8,7 @@ packages = [{include = "np_mcmc"}]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
+numba = "^0.56.4"
 
 
 [tool.poetry.group.dev.dependencies]
@@ -38,3 +39,4 @@ line-length = 88
 py_version = "py310"
 profile = "black"
 src_paths = ["np_mcmc"]
+line_length = 88
