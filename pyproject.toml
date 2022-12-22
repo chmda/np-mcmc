@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "np-mcmc"
+version = "0.1.0"
+description = "A python package for MCMC algorithms using Numpy and Numba"
+authors = ["Charles MIRANDA <charles.miranda@protonmail.com>"]
+readme = "README.md"
+packages = [{include = "np_mcmc"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^0.991"
+black = "^22.12.0"
+isort = "^5.11.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+python_version = "3.10"
+disallow_untyped_defs = true # enforce the usage of the type hints
+disallow_any_unimported = true
+no_implicit_optional = true
+check_untyped_defs = true
+warn_return_any = true
+show_error_codes = true
+warn_unused_ignores = true
+warn_no_return = true
+
+[tool.black]
+target-version = ["py310"]
+line-length = 88
+
+[tool.isort]
+py_version = "py310"
+profile = "black"
+src_paths = ["np_mcmc"]

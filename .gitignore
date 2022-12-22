@@ -1,0 +1,15 @@
+# byte-compiled
+__pycache__/
+
+# environments
+.venv
+
+# mypy
+.mypy_cache/
+
+# editors
+.vscode/
+
+# Windows
+Thumbs.db
+
