@@ -19,29 +19,9 @@ from np_mcmc.utils import get_jitter
 __all__ = ["MCMC"]
 
 
-def _single_chain_mcmc(
-    init_state: Tuple, num_samples: int, sampler: Callable
-) -> List[Tuple]:
-    states: List[Tuple] = [()] * (num_samples + 1)
-    states[0] = init_state
-    for i in range(num_samples):
-        states[i + 1] = sampler(states[i])
-    return states
-
-
-def _parallel_chains_mcmc(
-    init_states: List[Tuple], num_samples: int, sampler: Callable, num_chains: int
-) -> List[List[Tuple]]:
-    states: List[List[Tuple]] = [None] * num_chains  # type: ignore
-    q, r = divmod(num_samples, num_chains)
-    n_samples_per_core: List[int] = [q] * num_chains
-    n_samples_per_core[-1] += r
-    for i in prange(num_chains):
-        states[i] = _single_chain_mcmc(init_states[i], n_samples_per_core[i], sampler)
-    return states
-
-
 class MCMC:
+    """Markov Chain Monte Carlo inference"""
+
     def __init__(
         self,
         kernel: MCMCKernel,
@@ -49,6 +29,18 @@ class MCMC:
         num_chains: int = 1,
         chain_method: ChainMethod = "sequential",
     ) -> None:
+        """Creates a MCMC.
+
+        :param kernel: An instance of :class:`~np_mcmc.kernels.kernel.MCMCKernel`
+        that determines the Markov transition kernel for running MCMC.
+        :type kernel: MCMCKernel
+        :param num_warmup: Number of warmup steps.
+        :type num_warmup: int
+        :param num_chains: Number of MCMC chains to run, defaults to 1
+        :type num_chains: int, optional
+        :param chain_method: One of 'parallel', 'sequential', defaults to "sequential"
+        :type chain_method: ChainMethod, optional
+        """
         self._kernel: MCMCKernel = kernel
         self._sample_field_idx: int = self._kernel.sample_field_idx
         self._num_warmup: int = num_warmup
@@ -77,19 +69,41 @@ class MCMC:
 
     @property
     def num_warmup(self) -> int:
+        """Returns the number of warmup steps.
+
+        :return: Number of warmup steps.
+        :rtype: int
+        """
         return self._num_warmup
 
     @property
     def num_chains(self) -> int:
+        """Returns the number of MCMC chains.
+
+        :return: Number of MCMC chains
+        :rtype: int
+        """
         return self._num_chains
 
     @property
     def last_states(self) -> Optional[List[State]]:
+        """Returns the last states of the MCMC chains.
+
+        :return: Last states
+        :rtype: Optional[List[State]]
+        """
         return self._last_states
 
     def run(
         self, num_samples: int, init_params: Optional[Union[List[Tuple], Tuple]] = None
     ) -> None:
+        """Run the MCMC samplers and collect samples.
+
+        :param num_samples: Number of samples to generate.
+        :type num_samples: int
+        :param init_params: Initial parameters to begin sampling, defaults to None
+        :type init_params: Optional[Union[List[Tuple], Tuple]], optional
+        """
         # check 'init_params' for parallel
         if init_params is not None and self._num_chains > 1:
             if not isinstance(init_params[0], (list, tuple)):
@@ -147,11 +161,6 @@ class MCMC:
 
         # get chain functions
         if self._jit_method not in self._cached_fns["single_chain_mcmc"]:
-            """
-            self._cached_fns["single_chain_mcmc"][self._jit_method] = jitter(
-                partial(_single_chain_mcmc, sampler=sampler)
-            )
-            """
 
             def _partial_single_chain_mcmc(
                 init_state: Tuple, num_samples: int, sampler: Callable = sampler
@@ -160,11 +169,6 @@ class MCMC:
                 for i in range(num_samples):
                     states.append(sampler(states[i]))
                 return states
-                """
-                return _single_chain_mcmc(
-                    state, num_samples=num_samples, sampler=sampler
-                )
-                """
 
             self._cached_fns["single_chain_mcmc"][self._jit_method] = jitter(
                 _partial_single_chain_mcmc
@@ -177,25 +181,23 @@ class MCMC:
             if self._jit_method == "none":
                 raise ValueError("Parallel MCMC is only supported with numba")
             if self._jit_method not in self._cached_fns["parallel_chain_mcmc"]:
-                """
-                self._cached_fns["parallel_chain_mcmc"][self._jit_method] = jitter(
-                    partial(
-                        _parallel_chains_mcmc,
-                        sampler=sampler,
-                        num_chains=self._num_chains,
-                    )
-                )
-                """
 
                 def _partial_parallel_chain_mcmc(
                     init_states: List[Tuple],
                     num_samples: int,
                     sampler: Callable = sampler,
                     num_chains: int = self._num_chains,
+                    single_chain_mcmc: Callable = jit_single_chain_mcmc,
                 ) -> List[List[Tuple]]:
-                    return _parallel_chains_mcmc(
-                        init_states, num_samples, sampler=sampler, num_chains=num_chains
-                    )
+                    states: List[List[Tuple]] = [None] * num_chains  # type: ignore
+                    q, r = divmod(num_samples, num_chains)
+                    n_samples_per_core: List[int] = [q] * num_chains
+                    n_samples_per_core[-1] += r
+                    for i in prange(num_chains):
+                        states[i] = single_chain_mcmc(
+                            init_states[i], n_samples_per_core[i], sampler
+                        )
+                    return states
 
                 self._cached_fns["parallel_chain_mcmc"][self._jit_method] = jitter(
                     _partial_parallel_chain_mcmc
@@ -213,6 +215,13 @@ class MCMC:
         return states, [states[i][-1] for i in range(len(states))]
 
     def warmup(self, init_params: Optional[Tuple] = None) -> None:
+        """Run the MCMC warmup adaptation phase. After this call,
+        `self.warmup_state` will be set and the :meth:`run` method will skip
+        the warmup adaptation phase.
+
+        :param init_params: Initial parameters to begin sampling, defaults to None
+        :type init_params: Optional[Tuple], optional
+        """
         self._warmup_states = None
         self.run(self._num_warmup * self._num_chains, init_params=init_params)
         self._warmup_states = self._last_states
@@ -220,6 +229,13 @@ class MCMC:
     def get_samples(
         self, group_by_chain: bool = False
     ) -> Union[List[np.ndarray], np.ndarray]:
+        """Get samples from the MCMC run.
+
+        :param group_by_chain: Whether ro preserve the chain dimension, defaults to False
+        :type group_by_chain: bool, optional
+        :return: Samples
+        :rtype: Union[List[np.ndarray], np.ndarray]
+        """
         if self._states is None:
             raise ValueError("MCMC has not yet been executed")
         if group_by_chain:
