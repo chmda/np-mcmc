@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "A python package for MCMC algorithms using Numpy and Numba"
 authors = ["Charles MIRANDA <charles.miranda@protonmail.com>"]
 readme = "README.md"
+license = "MIT"
 packages = [{include = "np_mcmc"}]
 
 [tool.poetry.dependencies]
