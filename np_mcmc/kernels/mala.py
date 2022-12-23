@@ -35,7 +35,7 @@ class MALA(MCMCKernel):
 
     .. math::
 
-        \alpha_{t+1} := \min\left(1, \frac{\pi(\tilde X_{t+1})q(X_t | \tilde X_{t+1})}{\pi(\tilde X_t)q(\tilde X_{t+1} | X_t})
+        \alpha_{t+1} := \min\left(1, \frac{\pi(\tilde X_{t+1})q(X_t | \tilde X_{t+1})}{\pi(\tilde X_t)q(\tilde X_{t+1} | X_t)})
 
     where
 
@@ -94,8 +94,8 @@ class MALA(MCMCKernel):
                     grad_potential_fn: Callable = self._grad_potential_fn,
                 ) -> Tuple:
                     (u,) = state
-                    u_proposal: np.ndarray = np.random.normal(
-                        loc=u + step_size * grad_potential_fn(u), scale=2 * step_size
+                    u_proposal: np.ndarray = np.sqrt(2 * step_size) * np.random.normal(
+                        loc=u + step_size * grad_potential_fn(u)
                     )
                     frac_transition_prob: np.ndarray = -(
                         np.linalg.norm(
@@ -128,7 +128,9 @@ class MALA(MCMCKernel):
                     u_proposal: np.ndarray = np.zeros_like(u)
                     mu: np.ndarray = u + step_size * grad_potential_fn(u)
                     for i in range(u.shape[0]):
-                        u_proposal[i] = np.random.normal(loc=mu[i], scale=2 * step_size)
+                        u_proposal[i] = np.sqrt(2 * step_size) * np.random.normal(
+                            loc=mu[i]
+                        )
                     frac_transition_prob: np.ndarray = -(
                         np.linalg.norm(
                             u - u_proposal - step_size * grad_potential_fn(u_proposal)
