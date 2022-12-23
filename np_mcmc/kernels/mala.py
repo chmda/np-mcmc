@@ -9,6 +9,42 @@ MALAState = NamedTuple("MALAState", [("u", np.ndarray)])
 
 
 class MALA(MCMCKernel):
+    r"""Defines the Markov kernel of Metropolis-adjusted Langevin algorithm.
+
+    Let :math:`\pi : \mathbb R^d \to \mathbb R` the probability density function from which
+    it is desired to draw an ensemble of i.i.d. samples.
+    We consider the Langevin Itô diffusion
+
+    .. math::
+
+        \mathrm{d}X_t = \nabla \log \pi(X_t) \mathrm{d}t + \sqrt{2}\mathrm{d}B_t
+
+    where :math:`B_t` denotes the standard d-dimensional Brownian motion.
+
+    Approximate sample paths of the diffusion can be generated using Eueler-Maruyama method
+    with a fixed time step :math:`\tau > 0` by
+
+    .. math::
+
+        X_{t+1} := X_t + \tau\nabla \log\pi(X_t) + \sqrt{2\tau}\xi_t
+
+    where :math:`\xi_t \sim \mathcal N_d(0, I_d)`.
+    We define the proposal :math:`\tilde X_{t+1} := X_{t+1}` as a proposal for a new state.
+
+    The proposal is accepted or rejected according to the Metropolis-Hastings algorithm
+
+    .. math::
+
+        \alpha_{t+1} := \min\left(1, \frac{\pi(\tilde X_{t+1})q(X_t | \tilde X_{t+1})}{\pi(\tilde X_t)q(\tilde X_{t+1} | X_t})
+
+    where
+
+    .. math::
+
+        q(x' | x) \propto \exp(-\frac{1}{4\tau}\Vert x'-x-\tau\nabla\log\pi(x)\Vert_2^2)
+
+    is the transition probability density from :math:`x` to :math:`x'`.
+    """
     _jit_method: JitMethod
     sample_field_idx: int = 0
 
@@ -18,6 +54,15 @@ class MALA(MCMCKernel):
         grad_potential_fn: PotentialFunc,
         step_size: float = 0.1,
     ) -> None:
+        """Creates the Markov kernel
+
+        :param potential_fn: Potential function defined as :math:`\log\pi`.
+        :type potential_fn: PotentialFunc
+        :param grad_potential_fn: Gradient of the potential function
+        :type grad_potential_fn: PotentialFunc
+        :param step_size: Step size in Euler-Maruyama method, defaults to 0.1
+        :type step_size: float, optional
+        """
         super().__init__()
         self._potential_fn: PotentialFunc = potential_fn
         self._grad_potential_fn: PotentialFunc = grad_potential_fn
