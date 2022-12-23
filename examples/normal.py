@@ -20,6 +20,7 @@ def log_density(
 
 log_normal_density = njit(log_density)
 
+# Metropolis Hastings
 step_size: float = 1.0
 kernel = MetropolisHastings(log_normal_density, step_size=step_size)
 mcmc = MCMC(kernel, num_warmup=10000)
