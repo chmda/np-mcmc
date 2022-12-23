@@ -1,6 +1,7 @@
 from typing import Any, Callable, Dict, Union, TypeVar, List
 from np_mcmc.types import JitMethod
 from numba.extending import is_jitted
+from numba import jit, njit
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -40,3 +41,12 @@ def get_jit_method(func: Callable) -> JitMethod:
 
 def identity(x: Any) -> Any:
     return x
+
+
+def get_jitter(method: JitMethod) -> Callable:
+    jitter: Callable = identity
+    if method == "jit":
+        jitter = jit
+    elif method == "native":
+        jitter = njit
+    return jitter

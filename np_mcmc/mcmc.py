@@ -1,5 +1,5 @@
 import warnings
-import functools
+import numpy as np
 from np_mcmc.kernels.kernel import MCMCKernel, State
 from typing import (
     Callable,
@@ -11,10 +11,12 @@ from typing import (
     Union,
 )
 
-from numba import get_num_threads, prange, jit, njit
+from numba import get_num_threads, prange
 
 from np_mcmc.types import ChainMethod, JitMethod
-from np_mcmc.utils import identity
+from np_mcmc.utils import get_jitter
+
+__all__ = ["MCMC"]
 
 
 def _single_chain_mcmc(
@@ -48,6 +50,7 @@ class MCMC:
         chain_method: ChainMethod = "sequential",
     ) -> None:
         self._kernel: MCMCKernel = kernel
+        self._sample_field_idx: int = self._kernel.sample_field_idx
         self._num_warmup: int = num_warmup
         self._num_chains: int = num_chains
         if chain_method not in ["parallel", "sequential"]:
@@ -137,31 +140,65 @@ class MCMC:
                 init_states.append(state)
 
         # get jitter
-        jitter: Callable = identity
-        if self._jit_method == "jit":
-            jitter = jit
-        elif self._jit_method == "native":
-            jitter = njit
+        jitter: Callable = get_jitter(self._jit_method)
 
         # get sampler
         sampler = self._kernel.get_sampler()
 
         # get chain functions
         if self._jit_method not in self._cached_fns["single_chain_mcmc"]:
+            """
             self._cached_fns["single_chain_mcmc"][self._jit_method] = jitter(
-                functools.partial(_single_chain_mcmc, sampler=sampler)
+                partial(_single_chain_mcmc, sampler=sampler)
             )
+            """
+
+            def _partial_single_chain_mcmc(
+                init_state: Tuple, num_samples: int, sampler: Callable = sampler
+            ) -> List[Tuple]:
+                states: List[Tuple] = [init_state]
+                for i in range(num_samples):
+                    states.append(sampler(states[i]))
+                return states
+                """
+                return _single_chain_mcmc(
+                    state, num_samples=num_samples, sampler=sampler
+                )
+                """
+
+            self._cached_fns["single_chain_mcmc"][self._jit_method] = jitter(
+                _partial_single_chain_mcmc
+            )
+
         jit_single_chain_mcmc = self._cached_fns["single_chain_mcmc"][self._jit_method]
 
         parallel_chain: bool = self._chain_method == "parallel"
         if parallel_chain:
+            if self._jit_method == "none":
+                raise ValueError("Parallel MCMC is only supported with numba")
             if self._jit_method not in self._cached_fns["parallel_chain_mcmc"]:
+                """
                 self._cached_fns["parallel_chain_mcmc"][self._jit_method] = jitter(
-                    functools.partial(
+                    partial(
                         _parallel_chains_mcmc,
                         sampler=sampler,
                         num_chains=self._num_chains,
                     )
+                )
+                """
+
+                def _partial_parallel_chain_mcmc(
+                    init_states: List[Tuple],
+                    num_samples: int,
+                    sampler: Callable = sampler,
+                    num_chains: int = self._num_chains,
+                ) -> List[List[Tuple]]:
+                    return _parallel_chains_mcmc(
+                        init_states, num_samples, sampler=sampler, num_chains=num_chains
+                    )
+
+                self._cached_fns["parallel_chain_mcmc"][self._jit_method] = jitter(
+                    _partial_parallel_chain_mcmc
                 )
             jit_parallel_chain_mcmc = self._cached_fns["parallel_chain_mcmc"][
                 self._jit_method
@@ -171,7 +208,7 @@ class MCMC:
         if parallel_chain:
             states = jit_parallel_chain_mcmc(init_states, num_samples)
         else:
-            states_flat = jit_single_chain_mcmc(init_states[0], num_samples)
+            states_flat = jit_single_chain_mcmc(tuple(init_states[0]), num_samples)
             states = [states_flat]
         return states, [states[i][-1] for i in range(len(states))]
 
@@ -179,3 +216,25 @@ class MCMC:
         self._warmup_states = None
         self.run(self._num_warmup * self._num_chains, init_params=init_params)
         self._warmup_states = self._last_states
+
+    def get_samples(
+        self, group_by_chain: bool = False
+    ) -> Union[List[np.ndarray], np.ndarray]:
+        if self._states is None:
+            raise ValueError("MCMC has not yet been executed")
+        if group_by_chain:
+            return [
+                np.asarray(
+                    [
+                        self._states[i][j][self._sample_field_idx]
+                        for j in range(len(self._states[i]))
+                    ]
+                )
+                for i in range(len(self._states))
+            ]
+        return np.asarray(
+            [
+                self._states_flat[i][self._sample_field_idx]  # type: ignore
+                for i in range(len(self._states_flat))  # type: ignore
+            ]
+        )

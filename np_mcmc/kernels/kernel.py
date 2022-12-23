@@ -23,3 +23,7 @@ class MCMCKernel(ABC):
     @abstractmethod
     def get_sampler(self) -> _Kernel:
         raise NotImplementedError
+
+    @property
+    def sample_field_idx(self) -> int:
+        raise NotImplementedError
